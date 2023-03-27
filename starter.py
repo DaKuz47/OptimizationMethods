@@ -1,7 +1,7 @@
 import argparse
 
 import data_io as dio
-from methods import simplex
+from methods.simplex import TransportTask
 
 FILE = 'data.txt'
 
@@ -16,4 +16,6 @@ if __name__ == '__main__':
     arguments = pars_arguments()
 
     receptions, destinations, transfer_cost = dio.get_task_table_data(FILE) if arguments.table else dio.get_task_data(FILE)
-    print(simplex._get_first_iteration(receptions, destinations))
+    
+    task = TransportTask(receptions, destinations, transfer_cost)
+    print(task.get_solution())
