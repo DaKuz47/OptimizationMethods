@@ -32,6 +32,7 @@ def pars_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('--method_order', type=str, help='method name')
     parser.add_argument('--step_finder', type=str, help='method for find step for first order method')
+    parser.add_argument('--skalar', help="Calulate skalar multiplication", action="store_true")
     parser.add_argument('--list', help='Show list of methods', action="store_true")
     return parser.parse_args()
 
@@ -68,9 +69,10 @@ if __name__ == '__main__':
 
     print(f"k = {res[-1][0]}, x_min = {res[-1][1]}")
 
-    print(counter)
-    # for i in range(len(res)-2):
-    #     print("Скалярное произведение %d и %d отрезков = %.4f" % (i+1, i+2, skalar([substract(res[i][1], res[i+1][1]), substract(res[i+2][1], res[i+1][1])])))
+    print(f"Количество обращений N = {counter}")
+    if arguments.skalar:
+        for i in range(len(res)-2):
+            print("Скалярное произведение %d и %d отрезков = %.4f" % (i+1, i+2, skalar([substract(res[i][1], res[i+1][1]), substract(res[i+2][1], res[i+1][1])])))
 
     
     f_levels(f, [item[1] for item in res])
