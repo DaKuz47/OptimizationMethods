@@ -1,103 +1,103 @@
-from typing import Callable, List, Tuple
+import math
+import itertools
+import numpy as np
+from scipy.linalg import solve
 
-methods_dict_help = {
-    'first': {
-        'Golden ratio method': 'golden',
-        'Try points method': 'try_points',
-    },
-    'second': {},
-}
+methods_dict_help = ['simplex', 'brute']
 
+def get_canonical_form(file):
 
-def first_order(x_prev, derivates: List[Callable], step_finder: Callable, eps: float) -> Tuple[int, Tuple[float]]:
-    # начальный этап
-    k = 0
-    process = [(k, x_prev)]
+    with open(file) as f:
+        eq = [line.strip().split() for line in f.readlines()]
 
-    # Основной этап
-    while True:
+    m, n = map(int, eq[0])
+    w = {idx:(-1.0 if sign[0] == ">=" else 1.0) for idx, sign in enumerate(eq[2:-1]) if sign[0] != '='}
+    print(w)
+    x_unsign = [x for x in range(n) if x+1 not in map(int, eq[-1])]
+
+    A = []
+    b = [0]*m
+    for idx, eql in enumerate(eq[2:-1]):
+        A.append(list(map(float, eql[1:-1])))
+        A[idx] += [-A[idx][x] for x in x_unsign]
+        ws = [(0.0 if idx != i else w[idx]) for i in w.keys()]
+        A[idx] += ws
         
-        alpha_f = alpha_f_generator(derivates[0], [-1*derivates[1](*x_prev), -1*derivates[2](*x_prev)], x_prev)
-        alpha = step_finder(0.0, 1, alpha_f, eps)
-        x_next = (x_prev[0] - alpha * derivates[1](*x_prev), x_prev[1] - alpha * derivates[2](*x_prev))
-        k += 1
-        process.append((k, x_next))
-
-        grad_f = _grad(derivates, x_next)
-        if abs(skalar((grad_f, grad_f))) < eps:
-            break
-        x_prev = x_next
-
-    return process
-
-
-def second_order(x_prev, derivates: List[Callable], step_finder: Callable, eps: float) -> Tuple[int, Tuple[float]]:
-    a = [[1, 0], [0, 1]]
-    k = 0
-    process = [(k, x_prev)]
-    omega_prev = [-x for x in _grad(derivates, x_prev)]
-
-    while abs(skalar((omega_prev, omega_prev))) > eps:
-        p = mm(a, t([omega_prev]))
-        alpha_f = alpha_f_generator(derivates[0], t(p)[0], x_prev)
-        alpha = step_finder(0.0, 1, alpha_f, eps)
-
-        x_next = summator(x_prev, [t(p)[0][0]*alpha, t(p)[0][1]*alpha])
-        omega_next = [-x for x in _grad(derivates, x_next)]
-
-        d_x = substract(x_next, x_prev)
-        d_omega = substract(omega_next, omega_prev)
-        a = ms(a, mmc(ms(mmc(mm(t([d_x]), [d_x]), 1/skalar((d_omega, d_x))), mmc(mm(mm(mm(a, t([d_omega])), [d_omega]), t(a)), 1/skalar((mm([d_omega], a)[0], d_omega)))), -1))
-        k += 1
-        omega_prev = omega_next
-        x_prev = x_next
-        process.append((k, x_prev))
+        b[idx] = float(eql[-1])
     
-    return process
 
-
-def alpha_f_generator(func: Callable, direction: List[float], x: Tuple[float]) -> Callable:
-
-    def alpha_f(alpha):
-        x1 = x[0] + alpha*direction[0]
-        x2 = x[1] + alpha*direction[1]
-
-        return func(x1, x2)
+    # коэффитсиент направления
+    dir_coef = -1 if eq[1][0] == 'max' else 1
     
-    return alpha_f
+    # заполняем вектор c
+    c = list(map(float, eq[1][1:]))
+    c += [-c[x] for x in x_unsign] + [0] * len(w)
+    c = [dir_coef*x for x in c]      
+
+    return (c, A, b)
 
 
-def skalar(values: List[Tuple[float]]):
-    sum = 0
-    for i in range(len(values[0])):
-        mult = 1
-        for j in range(len(values)):
-            mult *= values[j][i]
-        sum += mult
+def brute(c, A, b):
+    print(A, b, c)
+    basics = itertools.combinations(list(range(len(A[0]))), len(A))
+    count = 0
+    min_val = None
+    res_vector = None
+    for basice in basics:
+        sub_A = build_sub_matrix(A, basice)
+        if get_det(sub_A) != 0:
+            x = t(list(solve(np.array(sub_A), np.array(t([b])))))[0]
+            if any(xi < 0 for xi in x) == False:
+                res = [0]*len(A[0])
+                for i, j in zip(basice, x):
+                    res[i] = j
+                
+                val = sum([i*j for i, j in zip(c, res)])
+                if min_val is None:
+                    print(val)
+                    min_val = val
+                    res_vector = res
+                elif val < min_val:
+                    min_val = val
+                    print(val)
+                    res_vector = res
+    return res_vector
+
+
+def get_det(A):
+    if len(A) == 1:
+        return A[0][0]
+
+    res = 0
+    for i in range(len(A)):
+        res += ((-1)**i)*A[0][i]*get_det([line[:i] + line[i+1:] for line in A[1:]])
     
-    return sum
+    return res
 
 
-def substract(point_a: Tuple[float], point_b: Tuple[float]) -> Tuple[float]:
-    """Вычитание векторов-строк"""
-    return (point_a[0] - point_b[0], point_a[1] - point_b[1])
+def gauss(A_const, b_const):
+    a = np.array(A_const)
+    b = np.array(b_const)
+    n = len(b)
+    # Elimination phase
+    for k in range(0, n-1):
+        for i in range(k+1,n):
+            if a[i, k] != 0.0:
+                #if not null define λ
+                lam = a[i,k] / a[k,k]
+                #we calculate the new row of the matrix
+                a[i,k+1:n] = a[i,k+1:n] - lam*a[k,k+1:n]
+                #we update vector b
+                b[i] = b[i] - lam*b[k]
+                # backward substitution
+    for k in range(n-1,-1,-1):
+        b[k] = (b[k] - np.dot(a[k,k+1:n],b[k+1:n]))/a[k,k]
+    
+    return list(b)
 
 
-def summator(point_a: List[float], point_b: list[float]) -> list[float]:
-    """Сложение векторов-строк"""
-    return (point_a[0] + point_b[0], point_a[1] + point_b[1])
-
-
-def _grad(derivates: List[Callable], x: Tuple[float]) -> Tuple[float]:
-    """градиент"""
-    return (derivates[1](*x), derivates[2](*x))
-
-
-def t(matrix: list[list[float]]) -> list[list[float]]:
-    """Транспонирование матритсы"""
-    t_matrix = [[matrix[i][j] for i in range(len(matrix))] for j in range(len(matrix[0]))]
-
-    return t_matrix
+def build_sub_matrix(A, indexes):
+    return [[line[i] for i in indexes] for line in A]
 
 
 def mm(matrix_a: list[list[float]], matrix_b: list[list[float]]) -> list[list[float]]:
@@ -107,23 +107,60 @@ def mm(matrix_a: list[list[float]], matrix_b: list[list[float]]) -> list[list[fl
     return res_matrix
 
 
-def ms(matrix_a: list[list[float]], matrix_b: list[list[float]]) -> list[list[float]]:
-    """Матричное сложение"""
-    res = [[matrix_a[i][j] + matrix_b[i][j] for j in range(len(matrix_a[0]))] for i in range(len(matrix_a))]
-    return res
+def t(matrix: list[list[float]]) -> list[list[float]]:
+    """Транспонирование матритсы"""
+    t_matrix = [[matrix[i][j] for i in range(len(matrix))] for j in range(len(matrix[0]))]
+
+    return t_matrix
 
 
-def mmc(matrix_a: list[list[float]], const: float) -> list[list[float]]:
-    """Умножение матритсы на константу"""
-    for i in range(len(matrix_a)):
-        for j in range(len(matrix_a[0])):
-            matrix_a[i][j] *= const
+def simplex(c, A, b):
+    table = get_table(c, A, b)
+    while can_be_better(table):
+        out_col, in_col = get_new_basice(table)
+        pivot(out_col, in_col, table)
+
+
+    print(table)
+
+
+def get_table(c, A, b):
+    """Строим симплекс-таблитсу из исходной ЗЛП"""
+    equals = [equal_i + [b_i] for equal_i, b_i in zip(A, b)]
+    table = equals + [c + [0]]
+
+    return table
+
+
+def can_be_better(table):
+    """Проверяем оптимальность"""
+    c = table[-1]
+    return any(x < 0 for x in c)
+
+
+def get_new_basice(table):
+    """Получаем следующий базис"""
+    c = table[-1]
+    # номер столбца входящего в базис
+    in_col = next(i for i, x in enumerate(c) if x < 0)
+    # номер выходящего
+    candidates = []
+    for eq in table[:-1]:
+        el = eq[in_col]
+        candidates.append(math.inf if el <= 0 else eq[-1]/el)
     
-    return matrix_a
+    out_col = candidates.index(min(candidates))
+
+    return out_col, in_col
 
 
+def pivot(out_col, in_col, table):
+    pass
 
-methods_dict = {
-    'first': first_order,
-    'second': second_order,
-}
+
+brute(*get_canonical_form('task1.txt'))
+
+# methods_dict = {
+#     'first': first_order,
+#     'second': second_order,
+# }
